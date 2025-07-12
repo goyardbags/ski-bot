@@ -10,8 +10,9 @@ import os
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-# Import and run the bot
-from main_storage import main
-
-if __name__ == "__main__":
-    main() 
+try:
+    from main_storage import main
+    if __name__ == "__main__":
+        main()
+except Exception as e:
+    print("Startup error:", e) 
