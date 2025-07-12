@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 class DataStorage:
     def __init__(self, filename="data/crypto_data.json"):
         self.filename = filename
+        # Ensure data directory exists
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         self.data = self.load_data()
     
     def load_data(self):
@@ -37,65 +39,75 @@ class DataStorage:
     def save_data(self):
         """Save data to JSON file"""
         try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(self.filename), exist_ok=True)
             with open(self.filename, 'w') as f:
                 json.dump(self.data, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving data: {e}")
+            # Don't crash if we can't save data
     
     def update_metric(self, symbol, metric_type, value, timestamp=None):
         """Update a metric for a symbol"""
-        if timestamp is None:
-            timestamp = datetime.now().isoformat()
-        
-        if symbol not in self.data:
-            self.data[symbol] = {}
-        
-        if metric_type not in self.data[symbol]:
-            self.data[symbol][metric_type] = []
-        
-        # Add new data point
-        self.data[symbol][metric_type].append({
-            'value': value,
-            'timestamp': timestamp
-        })
-        
-        # Keep only last 48 hours of data (for 24h comparison)
-        cutoff_time = datetime.now() - timedelta(hours=48)
-        self.data[symbol][metric_type] = [
-            point for point in self.data[symbol][metric_type]
-            if datetime.fromisoformat(point['timestamp']) > cutoff_time
-        ]
-        
-        self.save_data()
+        try:
+            if timestamp is None:
+                timestamp = datetime.now().isoformat()
+            
+            if symbol not in self.data:
+                self.data[symbol] = {}
+            
+            if metric_type not in self.data[symbol]:
+                self.data[symbol][metric_type] = []
+            
+            # Add new data point
+            self.data[symbol][metric_type].append({
+                'value': value,
+                'timestamp': timestamp
+            })
+            
+            # Keep only last 48 hours of data (for 24h comparison)
+            cutoff_time = datetime.now() - timedelta(hours=48)
+            self.data[symbol][metric_type] = [
+                point for point in self.data[symbol][metric_type]
+                if datetime.fromisoformat(point['timestamp']) > cutoff_time
+            ]
+            
+            self.save_data()
+        except Exception as e:
+            logger.error(f"Error updating metric: {e}")
     
     def get_24h_change(self, symbol, metric_type):
         """Calculate 24h change for a metric"""
-        if symbol not in self.data or metric_type not in self.data[symbol]:
+        try:
+            if symbol not in self.data or metric_type not in self.data[symbol]:
+                return None, None
+            
+            data_points = self.data[symbol][metric_type]
+            if len(data_points) < 2:
+                return None, None
+            
+            # Get current value (most recent)
+            current_value = data_points[-1]['value']
+            
+            # Find value from 24 hours ago
+            target_time = datetime.now() - timedelta(hours=24)
+            historical_value = None
+            
+            for point in reversed(data_points[:-1]):  # Skip the most recent
+                point_time = datetime.fromisoformat(point['timestamp'])
+                if point_time <= target_time:
+                    historical_value = point['value']
+                    break
+            
+            if historical_value is None or historical_value == 0:
+                return current_value, None
+            
+            # Calculate percentage change
+            change_percent = ((current_value - historical_value) / historical_value) * 100
+            return current_value, change_percent
+        except Exception as e:
+            logger.error(f"Error calculating 24h change: {e}")
             return None, None
-        
-        data_points = self.data[symbol][metric_type]
-        if len(data_points) < 2:
-            return None, None
-        
-        # Get current value (most recent)
-        current_value = data_points[-1]['value']
-        
-        # Find value from 24 hours ago
-        target_time = datetime.now() - timedelta(hours=24)
-        historical_value = None
-        
-        for point in reversed(data_points[:-1]):  # Skip the most recent
-            point_time = datetime.fromisoformat(point['timestamp'])
-            if point_time <= target_time:
-                historical_value = point['value']
-                break
-        
-        if historical_value is None or historical_value == 0:
-            return current_value, None
-        
-        # Calculate percentage change
-        change_percent = ((current_value - historical_value) / historical_value) * 100
-        return current_value, change_percent
 
 class CryptoBot(commands.Bot):
     def __init__(self):
@@ -170,10 +182,23 @@ class CryptoBot(commands.Bot):
         # Set initial bot status
         await self.update_status()
     
-    @tasks.loop(minutes=1)  # Update every minute
+    @tasks.loop(minutes=5)  # Update every 5 minutes instead of 1
     async def update_status_task(self):
         """Update bot status with current BTC price"""
-        await self.update_status()
+        try:
+            await self.update_status()
+        except Exception as e:
+            logger.error(f"Error in status update task: {e}")
+            # Set fallback status if update fails
+            try:
+                await self.change_presence(
+                    activity=discord.Activity(
+                        type=discord.ActivityType.watching, 
+                        name="crypto metrics"
+                    )
+                )
+            except Exception as e2:
+                logger.error(f"Error setting fallback status: {e2}")
     
     async def update_status(self):
         """Update bot status with current BTC price"""
@@ -499,18 +524,24 @@ class CryptoCog(commands.Cog):
 
 
 def main():
-    bot = CryptoBot()
-    
-    # Error handling for bot startup
     try:
+        bot = CryptoBot()
+        
+        # Error handling for bot startup
         discord_token = os.getenv('DISCORD_TOKEN')
         if discord_token is None:
             raise ValueError("DISCORD_TOKEN environment variable is not set")
+        
+        logger.info("Starting bot...")
         bot.run(discord_token)
+        
     except KeyboardInterrupt:
         logger.info("Bot shutting down...")
     except Exception as e:
         logger.error(f"Error running bot: {e}")
+        # Don't exit immediately, give time for logs to be written
+        import time
+        time.sleep(5)
 
 if __name__ == "__main__":
     main() 
