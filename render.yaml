@@ -1,5 +1,5 @@
 services:
-  - type: web
+  - type: worker
     name: ski-bot
     env: python
     pythonVersion: "3.12.3"
