@@ -2,6 +2,7 @@ services:
   - type: web
     name: ski-bot
     env: python
+    pythonVersion: "3.12.3"
     buildCommand: pip install -r requirements.txt
     startCommand: python run.py
     envVars:
