@@ -318,8 +318,6 @@ class CryptoCog(commands.Cog):
     @commands.command(name='fear')
     async def get_fear_greed(self, ctx):
         """Get current Crypto Fear & Greed Index"""
-        await ctx.send(self.bot.get_random_message())
-        
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get('https://api.alternative.me/fng/') as response:
@@ -353,31 +351,29 @@ class CryptoCog(commands.Cog):
                             else:
                                 time_str = "unknown"
                             
-                            response = f"**fear & greed index**\n"
+                            response = f"{self.bot.get_random_message()}\n\n**fear & greed index**\n"
                             response += f"value: {value}/100 {change_str}\n"
                             response += f"classification: {classification.lower()}\n"
                             response += f"updated: {time_str}"
                             
                             await ctx.send(response)
                         else:
-                            await ctx.send("no fear & greed data available")
+                            await ctx.send(f"{self.bot.get_random_message()}\nno fear & greed data available")
                     else:
-                        await ctx.send(f"error fetching fear & greed data: http {response.status}")
+                        await ctx.send(f"{self.bot.get_random_message()}\nerror fetching fear & greed data: http {response.status}")
                         
         except Exception as e:
-            await ctx.send(f"error fetching fear & greed data: {str(e)}")
+            await ctx.send(f"{self.bot.get_random_message()}\nerror fetching fear & greed data: {str(e)}")
     
     @commands.command(name='fund')
     async def get_funding_rates(self, ctx, symbol='BTC'):
         """Get current funding rates for a cryptocurrency"""
-        await ctx.send(self.bot.get_random_message())
-        
         try:
             # Get funding rate for the symbol
             funding_data = self.bot.okx_client.public.get_funding_rate(instId=f"{symbol.upper()}-USDT-SWAP")
             
             if not funding_data or 'data' not in funding_data or not funding_data['data']:
-                await ctx.send(f"no funding rate data found for {symbol.upper()}")
+                await ctx.send(f"{self.bot.get_random_message()}\nno funding rate data found for {symbol.upper()}")
                 return
             
             data = funding_data['data'][0]
@@ -395,7 +391,7 @@ class CryptoCog(commands.Cog):
             else:
                 next_funding_str = "unknown"
             
-            response = f"**{symbol.upper()} funding rate**\n"
+            response = f"{self.bot.get_random_message()}\n\n**{symbol.upper()} funding rate**\n"
             response += f"rate: {funding_rate:.4f}%\n"
             response += f"next funding: {next_funding_str}\n"
             response += f"instrument: {inst_id}"
@@ -403,19 +399,17 @@ class CryptoCog(commands.Cog):
             await ctx.send(response)
             
         except Exception as e:
-            await ctx.send(f"error fetching funding rate: {str(e)}")
+            await ctx.send(f"{self.bot.get_random_message()}\nerror fetching funding rate: {str(e)}")
     
     @commands.command(name='oi')
     async def get_open_interest(self, ctx, symbol='BTC'):
         """Get open interest for a cryptocurrency"""
-        await ctx.send(self.bot.get_random_message())
-        
         try:
             # Get open interest data
             oi_data = self.bot.okx_client.public.get_open_interest(instType="SWAP", instId=f"{symbol.upper()}-USDT-SWAP")
             
             if not oi_data or 'data' not in oi_data or not oi_data['data']:
-                await ctx.send(f"no open interest data found for {symbol.upper()}")
+                await ctx.send(f"{self.bot.get_random_message()}\nno open interest data found for {symbol.upper()}")
                 return
             
             data = oi_data['data'][0]
@@ -434,7 +428,7 @@ class CryptoCog(commands.Cog):
             else:
                 oi_change_str = "tracking started"
             
-            response = f"**{symbol.upper()} open interest**\n"
+            response = f"{self.bot.get_random_message()}\n\n**{symbol.upper()} open interest**\n"
             response += f"contracts: {self.bot.format_number(open_interest)}\n"
             response += f"value: {self.bot.format_number(open_interest)} {symbol.upper()} (${self.bot.format_number(open_interest_value)})\n"
             response += f"24h change: {oi_change_str}\n"
@@ -443,13 +437,11 @@ class CryptoCog(commands.Cog):
             await ctx.send(response)
             
         except Exception as e:
-            await ctx.send(f"error fetching open interest: {str(e)}")
+            await ctx.send(f"{self.bot.get_random_message()}\nerror fetching open interest: {str(e)}")
     
     @commands.command(name='vol')
     async def get_volume(self, ctx, symbol='BTC'):
         """Get spot and perpetual volume for a cryptocurrency"""
-        await ctx.send(self.bot.get_random_message())
-        
         try:
             # Get spot volume
             spot_ticker = self.bot.okx_client.public.get_ticker(instId=f"{symbol.upper()}-USDT")
@@ -457,7 +449,7 @@ class CryptoCog(commands.Cog):
             # Get perpetual volume
             perp_ticker = self.bot.okx_client.public.get_ticker(instId=f"{symbol.upper()}-USDT-SWAP")
             
-            response = f"**{symbol.upper()} volume**\n"
+            response = f"{self.bot.get_random_message()}\n\n**{symbol.upper()} volume**\n"
             
             if spot_ticker and 'data' in spot_ticker and spot_ticker['data']:
                 spot_data = spot_ticker['data'][0]
@@ -486,33 +478,29 @@ class CryptoCog(commands.Cog):
                 response += f"24h change: {volume_change_str}"
             
             if not spot_ticker and not perp_ticker:
-                await ctx.send(f"no volume data found for {symbol.upper()}")
+                await ctx.send(f"{self.bot.get_random_message()}\nno volume data found for {symbol.upper()}")
                 return
             
             await ctx.send(response)
             
         except Exception as e:
-            await ctx.send(f"error fetching volume data: {str(e)}")
+            await ctx.send(f"{self.bot.get_random_message()}\nerror fetching volume data: {str(e)}")
     
     @commands.command(name='liq')
     async def get_liquidations(self, ctx, symbol='BTC'):
         """Get recent liquidations for a cryptocurrency"""
-        await ctx.send(self.bot.get_random_message())
-        
         try:
             # Liquidations data requires premium API access
-            await ctx.send(f"liquidation data not available for {symbol.upper()} (requires premium api access)")
+            await ctx.send(f"{self.bot.get_random_message()}\nliquidation data not available for {symbol.upper()} (requires premium api access)")
             
         except Exception as e:
-            await ctx.send(f"error fetching liquidations: {str(e)}")
+            await ctx.send(f"{self.bot.get_random_message()}\nerror fetching liquidations: {str(e)}")
     
     @commands.command(name='all')
     async def get_all_metrics(self, ctx, symbol='BTC'):
         """Get all metrics (funding, OI, volume) for a cryptocurrency"""
-        await ctx.send(self.bot.get_random_message())
-        
         try:
-            response = f"**{symbol.upper()} metrics**\n"
+            response = f"{self.bot.get_random_message()}\n\n**{symbol.upper()} metrics**\n"
             
             # Get funding rate
             try:
@@ -566,7 +554,7 @@ class CryptoCog(commands.Cog):
             await ctx.send(response)
             
         except Exception as e:
-            await ctx.send(f"error fetching metrics: {str(e)}")
+            await ctx.send(f"{self.bot.get_random_message()}\nerror fetching metrics: {str(e)}")
     
     @commands.command(name='help')
     async def help_command(self, ctx):
@@ -667,20 +655,78 @@ class CryptoCog(commands.Cog):
     @tasks.loop(minutes=2)
     async def check_new_tweets(self):
         """Check for new tweets from tracked profiles and forward them."""
-        for name, info in self.twitter_tracker.list_profiles().items():
-            # Extract username from URL
-            match = re.search(r'twitter.com/([A-Za-z0-9_]+)', info['url'])
-            if not match:
-                continue
-            username = match.group(1)
-            latest_tweet_id, tweet_text = self.twitter_tracker.get_latest_tweet(username)
-            last_tweet_id = info.get('last_tweet_id')
-            if latest_tweet_id and latest_tweet_id != last_tweet_id:
-                channel = self.bot.get_channel(self.bot.channel_id)
-                tweet_url = f"https://twitter.com/{username}/status/{latest_tweet_id}"
-                if channel:
-                    await channel.send(f"[{name}] {tweet_text}\n{tweet_url}")
-                self.twitter_tracker.update_last_tweet(name, str(latest_tweet_id))
+        if not self.twitter_tracker.bearer_token:
+            logger.error("No Twitter Bearer Token found. Set TWITTER_BEARER_TOKEN environment variable.")
+            return
+            
+        profiles = self.twitter_tracker.list_profiles()
+        if not profiles:
+            return
+            
+        logger.info(f"Checking {len(profiles)} Twitter profiles for new tweets...")
+        
+        for name, info in profiles.items():
+            try:
+                # Extract username from URL
+                match = re.search(r'twitter.com/([A-Za-z0-9_]+)', info['url'])
+                if not match:
+                    logger.error(f"Could not extract username from URL: {info['url']}")
+                    continue
+                    
+                username = match.group(1)
+                logger.info(f"Checking tweets for @{username} (name: {name})")
+                
+                latest_tweet_id, tweet_text = self.twitter_tracker.get_latest_tweet(username)
+                last_tweet_id = info.get('last_tweet_id')
+                
+                logger.info(f"Latest tweet ID: {latest_tweet_id}, Last sent ID: {last_tweet_id}")
+                
+                if latest_tweet_id and latest_tweet_id != last_tweet_id:
+                    channel = self.bot.get_channel(self.bot.channel_id)
+                    tweet_url = f"https://twitter.com/{username}/status/{latest_tweet_id}"
+                    
+                    if channel:
+                        await channel.send(f"[{name}] {tweet_text}\n{tweet_url}")
+                        logger.info(f"Forwarded tweet from {name} to Discord")
+                    else:
+                        logger.error(f"Could not find Discord channel with ID: {self.bot.channel_id}")
+                        
+                    self.twitter_tracker.update_last_tweet(name, str(latest_tweet_id))
+                else:
+                    logger.info(f"No new tweets for {name}")
+                    
+            except Exception as e:
+                logger.error(f"Error checking tweets for {name}: {e}")
+
+    @commands.command(name='test_twitter')
+    async def test_twitter_api(self, ctx):
+        """Test if Twitter API is working properly"""
+        if not self.twitter_tracker.bearer_token:
+            await ctx.send("❌ No Twitter Bearer Token found. Set TWITTER_BEARER_TOKEN environment variable.")
+            return
+            
+        await ctx.send("🔍 Testing Twitter API...")
+        
+        try:
+            # Test with a known account (Twitter's own account)
+            test_username = "twitter"
+            user_id = self.twitter_tracker.get_user_id(test_username)
+            
+            if user_id:
+                await ctx.send(f"✅ Twitter API working! Found user ID: {user_id}")
+                
+                # Test getting tweets
+                latest_tweet_id, tweet_text = self.twitter_tracker.get_latest_tweet(test_username)
+                if latest_tweet_id and tweet_text:
+                    await ctx.send(f"✅ Tweet fetching working! Latest tweet: {tweet_text[:100]}...")
+                else:
+                    await ctx.send("❌ Could not fetch tweets")
+            else:
+                await ctx.send("❌ Could not get user ID from Twitter API")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Twitter API test failed: {str(e)}")
+            logger.error(f"Twitter API test error: {e}")
 
     async def cog_load(self):
         self.periodic_data_pull.start()
