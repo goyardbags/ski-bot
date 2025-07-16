@@ -19,6 +19,15 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Debug: Check if environment variables are loaded
+logger.info(f"CHANNEL_ID loaded: {os.getenv('CHANNEL_ID') is not None}")
+logger.info(f"TWITTER_BEARER_TOKEN loaded: {os.getenv('TWITTER_BEARER_TOKEN') is not None}")
+twitter_token = os.getenv('TWITTER_BEARER_TOKEN')
+if twitter_token:
+    logger.info(f"Twitter token starts with: {twitter_token[:10]}...")
+else:
+    logger.warning("TWITTER_BEARER_TOKEN not found in environment variables")
+
 class DataStorage:
     def __init__(self, filename="data/crypto_data.json"):
         self.filename = filename
