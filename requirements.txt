@@ -5,3 +5,4 @@ requests==2.31.0
 okx-sdk
 websockets
 flask
+tweepy>=4.0.0

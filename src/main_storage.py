@@ -9,6 +9,8 @@ import logging
 import aiohttp
 import random
 from okx import OkxRestClient
+import re
+import tweepy
 
 # Load environment variables
 load_dotenv()
@@ -112,7 +114,8 @@ class DataStorage:
 class CryptoBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True
+        if hasattr(intents, 'message_content'):
+            intents.message_content = True
         super().__init__(command_prefix='sb ', intents=intents)
         
         # Initialize OKX client and data storage
@@ -246,10 +249,71 @@ class CryptoBot(commands.Bot):
         else:
             return f"{num:.2f}"
 
+TWITTER_TRACK_FILE = 'data/twitter_profiles.json'
+
+def load_tracked_profiles():
+    if os.path.exists(TWITTER_TRACK_FILE):
+        with open(TWITTER_TRACK_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_tracked_profiles(profiles):
+    os.makedirs(os.path.dirname(TWITTER_TRACK_FILE), exist_ok=True)
+    with open(TWITTER_TRACK_FILE, 'w') as f:
+        json.dump(profiles, f, indent=2)
+
+class TwitterTracker:
+    def __init__(self):
+        self.profiles = load_tracked_profiles()
+        self.bearer_token = os.getenv('TWITTER_BEARER_TOKEN')
+        self.client = tweepy.Client(bearer_token=self.bearer_token, wait_on_rate_limit=True)
+
+    def add_profile(self, name, url):
+        self.profiles[name] = {'url': url, 'last_tweet_id': None}
+        save_tracked_profiles(self.profiles)
+
+    def remove_profile(self, name):
+        if name in self.profiles:
+            del self.profiles[name]
+            save_tracked_profiles(self.profiles)
+
+    def list_profiles(self):
+        return self.profiles
+
+    def update_last_tweet(self, name, tweet_id):
+        if name in self.profiles:
+            self.profiles[name]['last_tweet_id'] = tweet_id
+            save_tracked_profiles(self.profiles)
+
+    def get_last_tweet_id(self, name):
+        return self.profiles.get(name, {}).get('last_tweet_id')
+
+    def get_user_id(self, username):
+        try:
+            user = self.client.get_user(username=username)
+            if user and user.data:
+                return user.data.id
+        except Exception as e:
+            logger.error(f"Error fetching user id for {username}: {e}")
+        return None
+
+    def get_latest_tweet(self, username):
+        try:
+            user_id = self.get_user_id(username)
+            if not user_id:
+                return None, None
+            tweets = self.client.get_users_tweets(id=user_id, max_results=5, exclude=['replies', 'retweets'])
+            if tweets and tweets.data:
+                tweet = tweets.data[0]
+                return tweet.id, tweet.text
+        except Exception as e:
+            logger.error(f"Error fetching latest tweet for {username}: {e}")
+        return None, None
 
 class CryptoCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.twitter_tracker = TwitterTracker()
     
     @commands.command(name='fear')
     async def get_fear_greed(self, ctx):
@@ -372,7 +436,7 @@ class CryptoCog(commands.Cog):
             
             response = f"**{symbol.upper()} open interest**\n"
             response += f"contracts: {self.bot.format_number(open_interest)}\n"
-            response += f"value: ${self.bot.format_number(open_interest_value)}\n"
+            response += f"value: {self.bot.format_number(open_interest)} {symbol.upper()} (${self.bot.format_number(open_interest_value)})\n"
             response += f"24h change: {oi_change_str}\n"
             response += f"instrument: {inst_id}"
             
@@ -472,9 +536,9 @@ class CryptoCog(commands.Cog):
                     current_value, change_percent = self.bot.storage.get_24h_change(symbol.upper(), 'oi_value')
                     
                     if change_percent is not None:
-                        response += f"oi: ${self.bot.format_number(oi_value)} ({change_percent:+.1f}%)\n"
+                        response += f"oi: {self.bot.format_number(oi_value)} ({change_percent:+.1f}%)\n"
                     else:
-                        response += f"oi: ${self.bot.format_number(oi_value)} (tracking)\n"
+                        response += f"oi: {self.bot.format_number(oi_value)} (tracking)\n"
                 else:
                     response += "oi: n/a\n"
             except:
@@ -491,9 +555,9 @@ class CryptoCog(commands.Cog):
                     current_value, change_percent = self.bot.storage.get_24h_change(symbol.upper(), 'perp_volume')
                     
                     if change_percent is not None:
-                        response += f"volume: ${self.bot.format_number(perp_volume)} ({change_percent:+.1f}%)"
+                        response += f"volume: {self.bot.format_number(perp_volume)} ({change_percent:+.1f}%)"
                     else:
-                        response += f"volume: ${self.bot.format_number(perp_volume)} (tracking)"
+                        response += f"volume: {self.bot.format_number(perp_volume)} (tracking)"
                 else:
                     response += "volume: n/a"
             except:
@@ -507,20 +571,121 @@ class CryptoCog(commands.Cog):
     @commands.command(name='help')
     async def help_command(self, ctx):
         """Show help message with available commands"""
-        response = "**crypto bot commands**\n"
+        response = "**ski bot commands**\n"
         response += "all commands support any cryptocurrency symbol (e.g., btc, eth, sol)\n"
         response += "24h changes are tracked locally\n\n"
-        
         response += "**sb fear** - get current fear & greed index\n"
         response += "**sb fund [symbol]** - get current funding rate (default: btc)\n"
         response += "**sb oi [symbol]** - get open interest data with 24h change\n"
         response += "**sb vol [symbol]** - get spot and perpetual volume with 24h change\n"
         response += "**sb all [symbol]** - get all metrics with 24h changes\n"
+        response += "**sb add [profile link]** - add a Twitter profile to track and assign a name\n"
+        response += "**sb list** - list all tracked Twitter profiles\n"
+        response += "**sb remove {name}** - remove a tracked Twitter profile by name\n"
         response += "**sb help** - show this help message\n\n"
-        
-        response += "powered by okx exchange | local 24h tracking"
-        
+        response += "powered by okx exchange | local 24h tracking | twitter tracker"
         await ctx.send(response)
+
+    @commands.command(name='add')
+    async def add_twitter_profile(self, ctx, profile_link: str):
+        """Add a Twitter profile to track. Usage: sb add [profile link]"""
+        # Extract username from link
+        match = re.search(r'twitter.com/([A-Za-z0-9_]+)', profile_link)
+        if not match:
+            await ctx.send("Invalid Twitter profile link.")
+            return
+        username = match.group(1)
+        await ctx.send(f"Enter a name to assign to @{username}:")
+
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel
+        try:
+            msg = await self.bot.wait_for('message', check=check, timeout=30)
+            name = msg.content.strip()
+            if not name:
+                await ctx.send("Name cannot be empty.")
+                return
+            self.twitter_tracker.add_profile(name, profile_link)
+            await ctx.send(f"Added Twitter profile @{username} as '{name}'.")
+        except asyncio.TimeoutError:
+            await ctx.send("Timed out waiting for a name.")
+
+    @commands.command(name='list')
+    async def list_twitter_profiles(self, ctx):
+        """List all tracked Twitter profiles."""
+        profiles = self.twitter_tracker.list_profiles()
+        if not profiles:
+            await ctx.send("No Twitter profiles are being tracked.")
+            return
+        msg = "**Tracked Twitter Profiles:**\n"
+        for name, info in profiles.items():
+            msg += f"- {name}: {info['url']}\n"
+        await ctx.send(msg)
+
+    @commands.command(name='remove')
+    async def remove_twitter_profile(self, ctx, name: str):
+        """Remove a tracked Twitter profile by name. Usage: sb remove {name}"""
+        if name not in self.twitter_tracker.profiles:
+            await ctx.send(f"No profile found with name '{name}'.")
+            return
+        self.twitter_tracker.remove_profile(name)
+        await ctx.send(f"Removed Twitter profile '{name}'.")
+
+    @tasks.loop(hours=1)
+    async def periodic_data_pull(self):
+        """Periodically pull data for BTC, ETH, and SOL every hour for 24h% change reference."""
+        for symbol in ["BTC", "ETH", "SOL"]:
+            try:
+                # Pull and store perp volume
+                perp_ticker = self.bot.okx_client.public.get_ticker(instId=f"{symbol}-USDT-SWAP")
+                if perp_ticker and 'data' in perp_ticker and perp_ticker['data']:
+                    perp_volume = float(perp_ticker['data'][0].get('volCcy24h', 0))
+                    self.bot.storage.update_metric(symbol, 'perp_volume', perp_volume)
+                # Pull and store open interest
+                oi_data = self.bot.okx_client.public.get_open_interest(instType="SWAP", instId=f"{symbol}-USDT-SWAP")
+                if oi_data and 'data' in oi_data and oi_data['data']:
+                    oi_value = float(oi_data['data'][0].get('oiCcy', 0))
+                    self.bot.storage.update_metric(symbol, 'oi_value', oi_value)
+            except Exception as e:
+                logger.error(f"Error in periodic data pull for {symbol}: {e}")
+
+    @tasks.loop(hours=1)
+    async def cleanup_old_data(self):
+        """Remove all data older than 24h from storage."""
+        try:
+            cutoff_time = datetime.now() - timedelta(hours=24)
+            for symbol in list(self.bot.storage.data.keys()):
+                for metric in list(self.bot.storage.data[symbol].keys()):
+                    self.bot.storage.data[symbol][metric] = [
+                        point for point in self.bot.storage.data[symbol][metric]
+                        if datetime.fromisoformat(point['timestamp']) > cutoff_time
+                    ]
+            self.bot.storage.save_data()
+        except Exception as e:
+            logger.error(f"Error during cleanup_old_data: {e}")
+
+    @tasks.loop(minutes=2)
+    async def check_new_tweets(self):
+        """Check for new tweets from tracked profiles and forward them."""
+        for name, info in self.twitter_tracker.list_profiles().items():
+            # Extract username from URL
+            match = re.search(r'twitter.com/([A-Za-z0-9_]+)', info['url'])
+            if not match:
+                continue
+            username = match.group(1)
+            latest_tweet_id, tweet_text = self.twitter_tracker.get_latest_tweet(username)
+            last_tweet_id = info.get('last_tweet_id')
+            if latest_tweet_id and latest_tweet_id != last_tweet_id:
+                channel = self.bot.get_channel(self.bot.channel_id)
+                tweet_url = f"https://twitter.com/{username}/status/{latest_tweet_id}"
+                if channel:
+                    await channel.send(f"[{name}] {tweet_text}\n{tweet_url}")
+                self.twitter_tracker.update_last_tweet(name, str(latest_tweet_id))
+
+    async def cog_load(self):
+        self.periodic_data_pull.start()
+        self.cleanup_old_data.start()
+        self.check_new_tweets.start()
 
 
 def main():
